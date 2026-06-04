@@ -19,7 +19,12 @@ services:
       - ./patch/services/router.js:/app/server/dist/services/router.js:ro
       - ./patch/lib/request-detail-log.js:/app/server/dist/lib/request-detail-log.js:ro
       - ./patch/lib/custom-router.js:/app/server/dist/lib/custom-router.js:ro
+      - ./patch/lib/log-range.js:/app/server/dist/lib/log-range.js:ro
+      - ./patch/lib/provider-keys.js:/app/server/dist/lib/provider-keys.js:ro
+      - ./patch/lib/router-status.js:/app/server/dist/lib/router-status.js:ro
+      - ./patch/providers/openai-compat.js:/app/server/dist/providers/openai-compat.js:ro
       - ./patch/routes/request-detail-log.js:/app/server/dist/routes/request-detail-log.js:ro
+      - ./patch/routes/responses.js:/app/server/dist/routes/responses.js:ro
       - ./patch/routes/router-settings.js:/app/server/dist/routes/router-settings.js:ro
       - ./patch/public/analytics.html:/app/server/dist/public/analytics.html:ro
       - ./patch/public/settings.html:/app/server/dist/public/settings.html:ro

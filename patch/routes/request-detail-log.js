@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { getDb } from '../db/index.js';
 import { ensureRequestDetailSchema } from '../lib/request-detail-log.js';
+import { toSinceIso, normalizeRange } from '../lib/log-range.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ANALYTICS_PAGE = path.resolve(__dirname, '../public/analytics.html');
@@ -10,12 +11,7 @@ export const ANALYTICS_PAGE = path.resolve(__dirname, '../public/analytics.html'
 export const requestDetailLogRouter = Router();
 
 function toSince(range) {
-    const now = Date.now();
-    const ms = range === '12h' ? 12 * 3600000
-        : range === '24h' ? 86400000
-            : range === '30d' ? 30 * 86400000
-                : 7 * 86400000;
-    return new Date(now - ms).toISOString().slice(0, 19).replace('T', ' ');
+    return toSinceIso(normalizeRange(range));
 }
 
 requestDetailLogRouter.get('/summary', (req, res) => {

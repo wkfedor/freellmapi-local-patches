@@ -5,6 +5,11 @@ import { canMakeRequest, canUseTokens, isOnCooldown, canUseProvider } from './ra
 import { BANDIT_PRESETS, DEFAULT_STRATEGY, reliabilityPosterior, expectedReliability, sampleBeta, speedScore, intelligenceScore, headroomFactor, rateLimitFactor, combineScore, } from './scoring.js';
 import { parseBudget } from '../lib/budget.js';
 import { getCustomRouterSettings, orderChainCustom, isModelSkippedForRouting, } from '../lib/custom-router.js';
+import {
+    SkipReason,
+    describeSkipReason,
+    recordContextWindowSkip,
+} from '../lib/router-status.js';
 // Round-robin index per platform
 const roundRobinIndex = new Map();
 // ── Dynamic priority: track 429s per model and demote accordingly ──
@@ -233,8 +238,29 @@ function orderChain(chain, strategy) {
  * @param skipKeys - set of "platform:modelId:keyId" to skip (failed on this request)
  * @param preferredModelDbId - try this model first (sticky session)
  * @param requireVision - only consider models that accept image input (#118)
+ * @param audit - optional: log each skip (status skipped) in request detail log
  */
-export function routeRequest(estimatedTokens = 1000, skipKeys, preferredModelDbId, requireVision = false) {
+export function routeRequest(estimatedTokens = 1000, skipKeys, preferredModelDbId, requireVision = false, audit = null) {
+    const emitSkip = (reason, entry, extra = {}) => {
+        if (!audit?.onSkip)
+            return;
+        const ctx = {
+            platform: entry.platform,
+            modelId: entry.model_id,
+            displayName: entry.display_name,
+            estimatedTokens,
+            contextWindow: entry.context_window,
+            ...extra,
+        };
+        if (reason === SkipReason.CONTEXT_WINDOW)
+            recordContextWindowSkip(entry.model_db_id, estimatedTokens, entry.context_window);
+        audit.onSkip({
+            reason,
+            entry,
+            error: describeSkipReason(reason, ctx),
+            modelDbId: entry.model_db_id,
+        });
+    };
     const db = getDb();
     const strategy = getRoutingStrategy();
     if (strategy !== 'priority')
@@ -263,12 +289,16 @@ export function routeRequest(estimatedTokens = 1000, skipKeys, preferredModelDbI
         }
     }
     for (const entry of sortedChain) {
-        if (custom.useCustomRouting && isModelSkippedForRouting(entry.model_db_id))
+        if (custom.useCustomRouting && isModelSkippedForRouting(entry.model_db_id, entry.platform, entry.model_id)) {
+            emitSkip(SkipReason.CUSTOM_ROUTER, entry);
             continue;
+        }
         // Vision requests skip text-only models — including a sticky/preferred one,
         // which is correct: don't pin an image turn to a model that can't see it.
-        if (requireVision && !entry.supports_vision)
+        if (requireVision && !entry.supports_vision) {
+            emitSkip(SkipReason.VISION, entry);
             continue;
+        }
         // Context-aware routing: skip a model whose context window can't hold the
         // request, so a large prompt never selects a small-context model and burns
         // a failover hop on a 413 "request too large" (#167). Only enforced when we
@@ -278,16 +308,22 @@ export function routeRequest(estimatedTokens = 1000, skipKeys, preferredModelDbI
         // failed model is put on cooldown — so this is a fast-path, not the only
         // guard. If every model is too small, the loop falls through and the caller
         // gets the normal "all models exhausted" error rather than a wasted sweep.
-        if (entry.context_window != null && estimatedTokens > entry.context_window)
+        if (entry.context_window != null && estimatedTokens > entry.context_window) {
+            emitSkip(SkipReason.CONTEXT_WINDOW, entry);
             continue;
+        }
         // Check if we have a provider for this platform
         const provider = getProvider(entry.platform);
-        if (!provider)
+        if (!provider) {
+            emitSkip(SkipReason.NO_PROVIDER, entry);
             continue;
+        }
         // Get enabled keys that have not already failed validation or decryption.
         const keys = db.prepare("SELECT * FROM api_keys WHERE platform = ? AND enabled = 1 AND status IN ('healthy', 'unknown')").all(entry.platform);
-        if (keys.length === 0)
+        if (keys.length === 0) {
+            emitSkip(SkipReason.NO_API_KEY, entry);
             continue;
+        }
         // Get limits once for this model
         const limits = {
             rpm: entry.rpm_limit,

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FreeLLMAPI — настройки роутера</title>
   <style>
-    :root { --bg:#0f1419; --panel:#1a2332; --border:#2d3a4f; --text:#e7ecf3; --muted:#8b9cb3; --accent:#82aaff; --ok:#3dd68c; --err:#f07178; }
+    :root { --bg:#0f1419; --panel:#1a2332; --border:#2d3a4f; --text:#e7ecf3; --muted:#8b9cb3; --accent:#82aaff; --ok:#3dd68c; --err:#f07178; --warn:#ffcb6b; }
     body { margin:0; font:14px/1.5 "Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); }
     header { padding:12px 16px; border-bottom:1px solid var(--border); background:var(--panel); position:sticky; top:0; z-index:5; }
     header a { color:var(--accent); margin-right:14px; text-decoration:none; }
@@ -13,19 +13,36 @@
     section { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-bottom:16px; }
     h2 { margin:0 0 12px; font-size:1rem; color:var(--accent); }
     label { display:block; margin:10px 0 4px; color:var(--muted); font-size:12px; }
-    input[type=number], input[type=text] { width:100%; max-width:280px; padding:6px 10px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; }
-    .row { display:flex; align-items:center; gap:8px; margin:8px 0; }
+    input[type=number], input[type=text], select { width:100%; max-width:280px; padding:6px 10px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; }
+    .row { display:flex; align-items:center; gap:8px; margin:8px 0; flex-wrap:wrap; }
     button { background:#2d4a7a; color:var(--text); border:1px solid var(--accent); padding:8px 14px; border-radius:6px; cursor:pointer; }
     button.secondary { background:var(--bg); }
     .models { list-style:none; padding:0; margin:0; }
     .models li { display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--border); flex-wrap:wrap; }
-    .models li.broken { opacity:0.85; border-left:3px solid var(--err); padding-left:8px; }
+    .models li.red { border-left:3px solid var(--err); padding-left:8px; background:#1a1520; }
+    .models li.green { border-left:3px solid var(--ok); padding-left:8px; }
+    .models li.ctx-warn { border-left:3px solid var(--warn); padding-left:8px; background:#1a1f15; }
     .rank { font-weight:700; min-width:28px; color:var(--accent); }
     .stats { font-size:12px; color:var(--muted); }
-    .badge { font-size:11px; padding:2px 8px; border-radius:999px; }
+    .ctx-line { font-size:12px; color:var(--accent); font-weight:600; white-space:nowrap; }
+    .ctx-pill {
+      font-size:11px; font-weight:700; padding:3px 10px; border-radius:6px;
+      background:#1a2d4a; color:var(--accent); border:1px solid var(--border);
+      white-space:nowrap; cursor:help;
+    }
+    .col-name { flex:1 1 200px; min-width:180px; }
+    .col-ctx { flex:0 0 auto; text-align:right; }
+    .badge { font-size:11px; padding:2px 8px; border-radius:999px; cursor:help; border-bottom:1px dotted var(--muted); }
     .badge.err { background:#3d1a1f; color:var(--err); }
     .badge.ok { background:#1a3d2e; color:var(--ok); }
+    .badge.live { background:#3d2a1a; color:var(--warn); }
+    .badge.warn { background:#2a2d3d; color:#8b9cb3; }
+    .badge.ctx { background:#3d351a; color:var(--warn); }
     #msg { margin-top:12px; color:var(--ok); }
+    #refreshCountdown { color:var(--accent); font-weight:600; }
+    .legend-box { font-size:12px; color:var(--muted); line-height:1.55; margin-bottom:12px; }
+    .legend-box dt { color:var(--accent); font-weight:600; margin-top:8px; }
+    .legend-box dd { margin:4px 0 0 1rem; }
   </style>
 </head>
 <body>
@@ -44,24 +61,42 @@
       <h2>Режим роутера</h2>
       <div class="row">
         <input type="checkbox" id="useCustomRouting" />
-        <label for="useCustomRouting" style="margin:0">Своя логика (рейтинг + ошибки + health-check). Если выкл. — как в оригинальном FreeLLMAPI (bandit/priority).</label>
+        <label for="useCustomRouting" style="margin:0">Своя логика: зелёная (0 ошибок в окне, влезает в контекст) → по порядку ↑↓; красная и «не влезает в окно» — позже.</label>
       </div>
       <div class="row">
         <input type="checkbox" id="retryOnRouterError" />
-        <label for="retryOnRouterError" style="margin:0">При ошибке провайдера не отдавать 502 сразу — повторять другую модель (failover).</label>
+        <label for="retryOnRouterError" style="margin:0">При ошибке провайдера — failover на следующую модель.</label>
       </div>
     </section>
 
     <section>
-      <h2>Ошибки и повторы (3.1–3.2)</h2>
-      <label>Ошибок подряд на одной модели → пометить «не работает» и пропускать</label>
+      <h2>Статистика для выбора модели</h2>
+      <label>Окно из лога запросов</label>
+      <select id="statsWindow">
+        <option value="1h">1 час</option>
+        <option value="3h">3 часа</option>
+        <option value="6h">6 часов</option>
+        <option value="12h">12 часов</option>
+        <option value="24h">24 часа</option>
+        <option value="7d">7 дней</option>
+      </select>
+      <label>Обновление статуса (сброс «живых» ошибок и ошибок в окне), минут</label>
+      <input type="number" id="statsRefreshIntervalMinutes" min="1" max="1440" />
+      <p class="stats">До следующего обновления: <span id="refreshCountdown">—</span></p>
+      <p class="stats">«Не влезает в окно» <strong>не</strong> сбрасывается этим таймером — только успешный ответ моделью.</p>
+    </section>
+
+    <section>
+      <h2>Ошибки и повторы</h2>
+      <label>Ошибок подряд → пропуск в роутере и «не работает»</label>
       <input type="number" id="errorsBeforeDemote" min="1" max="50" />
-      <label>Макс. попыток failover на один запрос клиента</label>
+      <p class="stats">Одна ошибка не красит модель: нужно столько же подряд (или ERR в окне лога ≥ этого числа). Сейчас в UI: «ошибка 1/5 подряд».</p>
+      <label>Макс. попыток failover на один запрос</label>
       <input type="number" id="maxFailoverAttempts" min="1" max="50" />
     </section>
 
     <section>
-      <h2>Health-check сломанных моделей (3.3)</h2>
+      <h2>Health-check сломанных моделей</h2>
       <div class="row">
         <input type="checkbox" id="healthCheckEnabled" />
         <label for="healthCheckEnabled" style="margin:0">Периодически слать «привет» сломанным моделям</label>
@@ -73,8 +108,20 @@
     </section>
 
     <section>
-      <h2>Рейтинг моделей (3.3–3.5) — выше в списке = чаще выбирается</h2>
-      <p class="stats">Статистика из лога за 7 дней + счётчики ошибок. Перетаскивайте кнопками ↑↓.</p>
+      <h2>Рейтинг моделей — выше = раньше в очереди (среди зелёных)</h2>
+      <p class="stats">Колонка справа от названия — <strong>размер окна</strong> (context_window). Наведите на число для подсказки.</p>
+      <dl class="legend-box" id="statsLegend">
+        <dt>Зелёная · готова</dt>
+        <dd>Ключ есть, ошибок подряд &lt; порога, ERR в окне &lt; порога, не «не влезает в окно».</dd>
+        <dt>Жёлтая · предупреждение</dt>
+        <dd>Была 1…(N−1) ошибка подряд или ERR в окне — ещё <strong>в очереди</strong>, роутер не отключает.</dd>
+        <dt>Жёлтая · не влезает в окно</dt>
+        <dd>Пропуск по размеру контекста (не сбрасывается таймером статистики).</dd>
+        <dt>Красная · пропуск</dt>
+        <dd>Подряд ≥ порога из поля выше или ERR в окне ≥ порога — модель не выбирается.</dd>
+        <dt>Серая · нет ключа / провайдер</dt>
+        <dd>Нет API-ключа в Keys или нет адаптера платформы — модель не вызывается.</dd>
+      </dl>
       <ul class="models" id="modelList"></ul>
     </section>
 
@@ -83,39 +130,138 @@
   </main>
   <script>
     let modelOrder = [];
+    let countdownTimer = null;
     const $ = (id) => document.getElementById(id);
 
+    function esc(s) {
+      return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    function fmtCtxShort(w) {
+      if (w == null) return "?";
+      if (w >= 1e6) return (w / 1e6).toFixed(1) + "M";
+      if (w >= 1000) return Math.round(w / 1000) + "k";
+      return String(w);
+    }
+
+    function fmtCtxExact(w) {
+      if (w == null) return "не задано";
+      return w.toLocaleString("ru-RU") + " токенов";
+    }
+
+    function ctxHint(m) {
+      return "context_window (контекстное окно модели): " + fmtCtxExact(m.contextWindow)
+        + ". Роутер сравнивает с оценкой запроса (вход + max_tokens). Если запрос больше — модель пропускается (см. лог SKIPPED).";
+    }
+
+    function fmtCountdown(sec) {
+      if (sec <= 0) return "сейчас";
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return m > 0 ? `${m} мин ${s} с` : `${s} с`;
+    }
+
+    function badgeHtml(m) {
+      const hint = esc(m.statusHint || "");
+      const short = esc(m.statusShort || "—");
+      let cls = "warn";
+      if (m.statusCode === "ready") cls = "ok";
+      else if (m.statusCode === "context_window") cls = "ctx";
+      else if (m.statusCode === "warning") cls = "live";
+      else if (m.statusCode === "window_error" || m.statusCode === "broken") cls = "err";
+      return `<span class="badge ${cls}" title="${hint}">${short}</span>`;
+    }
+
+    function rowClass(m) {
+      if (!m.canRoute) return "";
+      if (m.contextSkipActive) return "ctx-warn";
+      if (m.isRed || m.isBroken) return "red";
+      if (m.isWarning) return "ctx-warn";
+      if (m.isGreen) return "green";
+      return "";
+    }
+
+    function updateCountdown(cycle) {
+      if (!cycle) return;
+      $("refreshCountdown").textContent = fmtCountdown(cycle.secondsUntilRefresh);
+    }
+
     async function load() {
-      const data = await fetch('/api/router-settings').then(r => r.json());
+      const data = await fetch("/api/router-settings").then(r => r.json());
       const s = data.settings;
-      $('useCustomRouting').checked = s.useCustomRouting;
-      $('retryOnRouterError').checked = s.retryOnRouterError;
-      $('errorsBeforeDemote').value = s.errorsBeforeDemote;
-      $('maxFailoverAttempts').value = s.maxFailoverAttempts;
-      $('healthCheckEnabled').checked = s.healthCheckEnabled;
-      $('healthCheckIntervalMinutes').value = s.healthCheckIntervalMinutes;
-      $('healthProbeMessage').value = s.healthProbeMessage;
+      $("useCustomRouting").checked = s.useCustomRouting;
+      $("retryOnRouterError").checked = s.retryOnRouterError;
+      $("errorsBeforeDemote").value = s.errorsBeforeDemote;
+      $("maxFailoverAttempts").value = s.maxFailoverAttempts;
+      $("healthCheckEnabled").checked = s.healthCheckEnabled;
+      $("healthCheckIntervalMinutes").value = s.healthCheckIntervalMinutes;
+      $("healthProbeMessage").value = s.healthProbeMessage;
+      $("statsWindow").value = s.statsWindow || "1h";
+      $("statsRefreshIntervalMinutes").value = s.statsRefreshIntervalMinutes ?? 5;
       modelOrder = data.models.map(m => m.modelDbId);
       renderModels(data.models);
+      updateCountdown(data.statsCycle);
+      if (countdownTimer) clearInterval(countdownTimer);
+      let secLeft = data.statsCycle?.secondsUntilRefresh ?? 0;
+      countdownTimer = setInterval(() => {
+        secLeft = Math.max(0, secLeft - 1);
+        $("refreshCountdown").textContent = fmtCountdown(secLeft);
+        if (secLeft === 0) load();
+      }, 1000);
     }
 
     function renderModels(models) {
       const sorted = [...models].sort((a, b) => modelOrder.indexOf(a.modelDbId) - modelOrder.indexOf(b.modelDbId));
-      $('modelList').innerHTML = sorted.map((m, i) => `
-        <li class="${m.isBroken ? 'broken' : ''}" data-id="${m.modelDbId}">
+      $("modelList").innerHTML = sorted.map((m, i) => {
+        const tok = (m.windowInputTokens || m.windowOutputTokens)
+          ? ` · токены в окне ↓${m.windowInputTokens} ↑${m.windowOutputTokens}`
+          : "";
+        const ctxSkip = m.contextSkipActive && m.contextSkipEstimated
+          ? `<br><span class="stats">последний пропуск: нужно ≈${m.contextSkipEstimated} ток., окно ${m.contextSkipWindow ?? m.contextWindow ?? "?"}</span>`
+          : "";
+        const ctxTitle = esc(ctxHint(m));
+        return `
+        <li class="${rowClass(m)}" data-id="${m.modelDbId}">
           <span class="rank">#${i + 1}</span>
-          <span>${m.displayName}<br><span class="stats">${m.platform} / ${m.modelId}</span></span>
-          <span class="stats">OK ${m.totalSuccess} · ERR ${m.totalErrors} · подряд ${m.consecutiveErrors}</span>
-          ${m.isBroken ? '<span class="badge err">не работает</span>' : '<span class="badge ok">ok</span>'}
-          <button type="button" class="secondary up">↑</button>
-          <button type="button" class="secondary down">↓</button>
-        </li>`).join('');
-      $('modelList').querySelectorAll('.up').forEach((btn, idx) => {
+          <span class="col-name">${esc(m.displayName)}<br>
+            <span class="stats">${esc(m.platform)} / ${esc(m.modelId)}</span>${ctxSkip}
+          </span>
+          <span class="col-ctx">
+            <span class="ctx-pill" title="${ctxTitle}">${fmtCtxExact(m.contextWindow)}</span><br>
+            <span class="ctx-line" title="${ctxTitle}">${fmtCtxShort(m.contextWindow)}</span>
+          </span>
+          <span class="stats">OK ${m.windowOk} · ERR ${m.windowErr}${tok}<br>всего OK ${m.totalSuccess} · ERR ${m.totalErrors} · подряд ${m.consecutiveErrors}</span>
+          ${badgeHtml(m)}
+          <button type="button" class="secondary top" title="На первое место среди зелёных в очереди">⇈</button>
+          <button type="button" class="secondary up" title="Выше в рейтинге">↑</button>
+          <button type="button" class="secondary down" title="Ниже в рейтинге">↓</button>
+        </li>`;
+      }).join("");
+      $("modelList").querySelectorAll(".top").forEach((btn, idx) => {
+        btn.onclick = () => moveToTop(idx);
+      });
+      $("modelList").querySelectorAll(".up").forEach((btn, idx) => {
         btn.onclick = () => move(idx, -1);
       });
-      $('modelList').querySelectorAll('.down').forEach((btn, idx) => {
+      $("modelList").querySelectorAll(".down").forEach((btn, idx) => {
         btn.onclick = () => move(idx, 1);
       });
+    }
+
+    function saveOrder() {
+      return fetch("/api/router-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelOrder }),
+      }).then(() => load());
+    }
+
+    function moveToTop(idx) {
+      if (idx <= 0) return;
+      const id = modelOrder[idx];
+      modelOrder.splice(idx, 1);
+      modelOrder.unshift(id);
+      saveOrder();
     }
 
     function move(idx, dir) {
@@ -124,24 +270,26 @@
       const t = modelOrder[idx];
       modelOrder[idx] = modelOrder[j];
       modelOrder[j] = t;
-      load();
+      saveOrder();
     }
 
-    $('save').onclick = async () => {
+    $("save").onclick = async () => {
       const body = {
         settings: {
-          useCustomRouting: $('useCustomRouting').checked,
-          retryOnRouterError: $('retryOnRouterError').checked,
-          errorsBeforeDemote: Number($('errorsBeforeDemote').value),
-          maxFailoverAttempts: Number($('maxFailoverAttempts').value),
-          healthCheckEnabled: $('healthCheckEnabled').checked,
-          healthCheckIntervalMinutes: Number($('healthCheckIntervalMinutes').value),
-          healthProbeMessage: $('healthProbeMessage').value,
+          useCustomRouting: $("useCustomRouting").checked,
+          retryOnRouterError: $("retryOnRouterError").checked,
+          errorsBeforeDemote: Number($("errorsBeforeDemote").value),
+          maxFailoverAttempts: Number($("maxFailoverAttempts").value),
+          healthCheckEnabled: $("healthCheckEnabled").checked,
+          healthCheckIntervalMinutes: Number($("healthCheckIntervalMinutes").value),
+          healthProbeMessage: $("healthProbeMessage").value,
+          statsWindow: $("statsWindow").value,
+          statsRefreshIntervalMinutes: Number($("statsRefreshIntervalMinutes").value),
         },
         modelOrder,
       };
-      await fetch('/api/router-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      $('msg').textContent = 'Сохранено ' + new Date().toLocaleTimeString();
+      await fetch("/api/router-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      $("msg").textContent = "Сохранено " + new Date().toLocaleTimeString();
       load();
     };
 

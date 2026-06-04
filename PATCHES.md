@@ -11,6 +11,8 @@
 
 - `v1.0.0-log` — request log + analytics
 - `v1.1.0-router` — custom routing, settings, health-check
+- `v1.2.0-open-webui` — Open WebUI + LiteLLM stack
+- `v1.3.0-router-v2` — skip logging, context window UI, errors threshold from config, Claude via LiteLLM
 
 ## Секреты
 

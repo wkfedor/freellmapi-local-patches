@@ -15,7 +15,7 @@ import { authRouter } from './routes/auth.js';
 import { requestDetailLogRouter, ANALYTICS_PAGE, } from './routes/request-detail-log.js';
 import { routerSettingsRouter, SETTINGS_PAGE, } from './routes/router-settings.js';
 import { routeRequest } from './services/router.js';
-import { startHealthCheckWorker } from './lib/custom-router.js';
+import { startHealthCheckWorker, startStatsRefreshWorker, ensureCustomRouterSchema } from './lib/custom-router.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { createProxyRateLimiter } from './middleware/rateLimit.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -92,7 +92,9 @@ export function createApp() {
         }
         res.sendFile(path.join(clientDist, 'index.html'));
     });
+    ensureCustomRouterSchema();
     startHealthCheckWorker(routeRequest);
+    startStatsRefreshWorker();
     return app;
 }
 //# sourceMappingURL=app.js.map

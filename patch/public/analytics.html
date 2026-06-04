@@ -14,6 +14,7 @@
       --ok: #3dd68c;
       --err: #f07178;
       --warn: #ffcb6b;
+      --skip: #e0b86a;
       --accent: #82aaff;
       --req: #7ec8ff;
       --res: #b8f0c8;
@@ -85,12 +86,15 @@
       <a href="/analytics">Analytics</a>
       <strong>Request log</strong>
     </nav>
-    <h1>Запросы /v1/chat/completions — всё что ушло в ИИ и что пришло</h1>
+    <h1>Запросы /v1/chat/completions и /v1/responses — всё что ушло в ИИ и что пришло</h1>
     <div class="controls">
       <select id="range">
+        <option value="1h">1 час</option>
+        <option value="3h">3 часа</option>
+        <option value="6h">6 часов</option>
         <option value="12h">12 часов</option>
         <option value="24h">24 ч</option>
-        <option value="7d" selected>7 дн</option>
+        <option value="7d">7 дн</option>
         <option value="30d">30 дн</option>
       </select>
       <select id="statusFilter">
@@ -107,6 +111,23 @@
   <div id="errBanner" class="err-banner"></div>
   <div id="feed"></div>
   <script>
+    const LOG_RANGE_KEY = "freellmapi-log-range";
+
+    function loadRangeFromStorage() {
+      try {
+        const saved = localStorage.getItem(LOG_RANGE_KEY);
+        if (!saved) return;
+        const sel = document.getElementById("range");
+        if ([...sel.options].some((o) => o.value === saved)) sel.value = saved;
+      } catch (_) { /* private mode */ }
+    }
+
+    function saveRangeToStorage() {
+      try {
+        localStorage.setItem(LOG_RANGE_KEY, document.getElementById("range").value);
+      } catch (_) { /* private mode */ }
+    }
+
     function esc(s) {
       return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
@@ -126,11 +147,14 @@
       lines.push("");
 
       for (const a of entry.attempts) {
-        const st = a.status === "success" ? "tag-ok" : "tag-err";
+        const st = a.status === "success" ? "tag-ok"
+          : a.status === "skipped" ? "tag-skip"
+          : "tag-err";
         const fin = a.finalSuccess ? "  ★ ФИНАЛЬНЫЙ ОТВЕТ КЛИЕНТУ" : "";
+        const skipNote = a.status === "skipped" ? "  (роутер не вызывал провайдер)" : "";
         lines.push(
           `<span class="sep">────────────────────────────────────────</span>\n` +
-          `<span class="${st}">${esc(a.status.toUpperCase())}</span>${fin}\n` +
+          `<span class="${st}">${esc(a.status.toUpperCase())}</span>${skipNote}${fin}\n` +
           `<span class="tag-model">МОДЕЛЬ</span> ${esc(a.displayName || a.modelId)}  ` +
           `<span class="tag-model">ПРОВАЙДЕР</span> ${esc(a.platform)}  ` +
           `<span class="tag-model">model_id</span> ${esc(a.modelId)}\n` +
@@ -144,12 +168,14 @@
         lines.push(esc(a.promptPreview || "(нет данных)"));
         lines.push("");
         if (a.error) {
-          lines.push(`<span class="tag-err">▼ ОШИБКА</span>`);
+          lines.push(`<span class="tag-err">▼ ${a.status === "skipped" ? "ПРИЧИНА ПРОПУСКА" : "ОШИБКА"}</span>`);
           lines.push(esc(a.error));
           lines.push("");
         }
         lines.push(`<span class="tag-res">▼ ОТВЕТ (от ИИ)</span>`);
-        if (a.responsePreview) {
+        if (a.status === "skipped") {
+          lines.push("(запрос к провайдеру не отправлялся)");
+        } else if (a.responsePreview) {
           lines.push(esc(a.responsePreview));
         } else if (a.status === "success") {
           lines.push("(ответ не записан — старый лог до исправления stream; новые запросы будут с текстом)");
@@ -178,14 +204,15 @@
           return r.json();
         });
         if (!data.entries?.length) {
-          feed.innerHTML = '<div class="empty">Пока пусто. Любой запрос через Continue/Cline на :3012/v1 появится здесь автоматически.</div>';
+          feed.innerHTML = '<div class="empty">Пока пусто за выбранный период. Запросы на :3012/v1/chat/completions и /v1/responses появятся здесь. Claude Code идёт через LiteLLM (:4000) — в логе будет user-agent LiteLLM, если прокси доходит до FreeLLMAPI.</div>';
         } else {
           feed.innerHTML = data.entries.map((e) =>
             `<article class="entry"><div class="entry-head">#${esc(e.traceId.slice(0, 8))}…</div><div class="entry-body">${formatEntry(e)}</div></article>`
           ).join("");
         }
+        const rangeLabel = document.getElementById("range").selectedOptions[0]?.textContent || range;
         document.getElementById("status").textContent =
-          "Обновлено " + new Date().toLocaleTimeString() + " · записей: " + (data.total ?? 0);
+          "Обновлено " + new Date().toLocaleTimeString() + " · период: " + rangeLabel + " · записей: " + (data.total ?? 0);
       } catch (e) {
         errBanner.style.display = "block";
         errBanner.textContent = e.message;
@@ -194,7 +221,11 @@
     }
 
     document.getElementById("refresh").addEventListener("click", refresh);
-    document.getElementById("range").addEventListener("change", refresh);
+    document.getElementById("range").addEventListener("change", () => {
+      saveRangeToStorage();
+      refresh();
+    });
+    loadRangeFromStorage();
     document.getElementById("statusFilter").addEventListener("change", refresh);
     document.getElementById("search").addEventListener("keydown", (e) => {
       if (e.key === "Enter") refresh();

@@ -2,9 +2,20 @@
 
 | Репозиторий | URL |
 |-------------|-----|
-| **Патчи FreeLLMAPI** (этот код) | https://github.com/wkfedor/freellmapi-local-patches |
-| Fork **LiteLLM** | https://github.com/wkfedor/litellm |
-| Fork **FreeLLMAPI** (upstream) | https://github.com/wkfedor/freellmapi |
+| **Патчи FreeLLMAPI** (этот репозиторий, `~/freellmapi`) | https://github.com/wkfedor/freellmapi-local-patches |
+| Fork **FreeLLMAPI** (исходники upstream, GitHub fork) | https://github.com/wkfedor/freellmapi → parent: `tashfeenahmed/freellmapi` |
+| Fork **LiteLLM** (исходники, GitHub fork) | https://github.com/wkfedor/litellm → parent: `BerriAI/litellm` |
+
+## Форк или патчи?
+
+| Что | Тип | Как используется локально |
+|-----|-----|---------------------------|
+| `wkfedor/freellmapi` | **GitHub fork** upstream | Сейчас **не** собирается из этого клона; образ `ghcr.io/tashfeenahmed/freellmapi:latest` |
+| `freellmapi-local-patches` | **Отдельный репозиторий** (не fork) | Каталог `patch/` + `docker-compose.yml` монтируют `.js` поверх образа |
+| `open-webui-litellm/` | Конфиг стека | Официальный образ LiteLLM + `config.yaml` (без форка кода LiteLLM в рантайме) |
+| `wkfedor/litellm` | Fork на GitHub | Запасной/будущий; в docker-compose — `docker.litellm.ai/berriai/litellm:main-stable` |
+
+Итого: доработки роутера и лога — **volume-патчи** в этом репо, а не коммиты внутри fork `wkfedor/freellmapi`.
 
 ## Теги
 

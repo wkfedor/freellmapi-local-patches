@@ -1,4 +1,5 @@
 # LiteLLM → FreeLLMAPI (http://host.docker.internal:3012/v1)
+# Anthropic-имена для Claude Code; OpenAI-имена для Open WebUI.
 model_list:
   - model_name: auto
     litellm_params:
@@ -7,6 +8,24 @@ model_list:
       api_key: os.environ/FREELLMAPI_KEY
 
   - model_name: freellm-auto
+    litellm_params:
+      model: openai/auto
+      api_base: http://host.docker.internal:3012/v1
+      api_key: os.environ/FREELLMAPI_KEY
+
+  - model_name: claude-sonnet-4
+    litellm_params:
+      model: openai/auto
+      api_base: http://host.docker.internal:3012/v1
+      api_key: os.environ/FREELLMAPI_KEY
+
+  - model_name: claude-3-5-sonnet-20241022
+    litellm_params:
+      model: openai/auto
+      api_base: http://host.docker.internal:3012/v1
+      api_key: os.environ/FREELLMAPI_KEY
+
+  - model_name: claude-3-5-haiku-20241022
     litellm_params:
       model: openai/auto
       api_base: http://host.docker.internal:3012/v1

@@ -398,6 +398,20 @@ proxyRouter.post('/chat/completions', async (req, res) => {
     const IMAGE_TOKEN_ESTIMATE = 1000;
     const imageCount = messages.reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter(b => b?.type === 'image_url' || b?.type === 'image').length : 0), 0);
     const estimatedTotal = estimatedInputTokens + imageCount * IMAGE_TOKEN_ESTIMATE + (max_tokens ?? 1000);
+    let routingSkipIdx = 0;
+    const routingAudit = {
+        onSkip: ({ entry, error }) => {
+            logDetailAttempt(routingSkipIdx++, {
+                platform: entry.platform,
+                modelId: entry.model_id,
+                displayName: entry.display_name,
+            }, 'skipped', {
+                error,
+                latencyMs: 0,
+                inputTokens: estimatedTotal,
+            });
+        },
+    };
     // Explicit `model` field pins routing. If the catalog has no enabled row
     // matching the requested id, return 400 — silently auto-routing to a
     // different model would be surprising to OpenAI-compatible clients.
@@ -436,7 +450,7 @@ proxyRouter.post('/chat/completions', async (req, res) => {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         let route;
         try {
-            route = routeRequest(estimatedTotal, skipKeys.size > 0 ? skipKeys : undefined, preferredModel, hasImage);
+            route = routeRequest(estimatedTotal, skipKeys.size > 0 ? skipKeys : undefined, preferredModel, hasImage, routingAudit);
         }
         catch (err) {
             // No more models available
