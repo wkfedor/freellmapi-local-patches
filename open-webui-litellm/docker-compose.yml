@@ -1,0 +1,59 @@
+# Open WebUI (UI) → LiteLLM (прокси) → FreeLLMAPI (:3012)
+name: open-webui-litellm
+
+services:
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:main-stable
+    container_name: litellm-proxy
+    env_file:
+      - .env
+    environment:
+      FREELLMAPI_KEY: ${FREELLMAPI_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports:
+      - "127.0.0.1:4000:4000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    env_file:
+      - .env
+    environment:
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      ENABLE_OPENAI_API: "true"
+      ENABLE_OLLAMA_API: "false"
+      # Быстрый старт без долгой загрузки моделей с HuggingFace
+      RAG_EMBEDDING_MODEL_AUTO_UPDATE: "false"
+      WHISPER_MODEL_AUTO_UPDATE: "false"
+      OFFLINE_MODE: "true"
+    volumes:
+      - open-webui-data:/app/backend/data
+    ports:
+      - "127.0.0.1:3013:8080"
+    depends_on:
+      litellm:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  open-webui-data:

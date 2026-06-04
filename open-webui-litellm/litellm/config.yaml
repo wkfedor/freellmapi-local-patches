@@ -1,0 +1,21 @@
+# LiteLLM → FreeLLMAPI (http://host.docker.internal:3012/v1)
+model_list:
+  - model_name: auto
+    litellm_params:
+      model: openai/auto
+      api_base: http://host.docker.internal:3012/v1
+      api_key: os.environ/FREELLMAPI_KEY
+
+  - model_name: freellm-auto
+    litellm_params:
+      model: openai/auto
+      api_base: http://host.docker.internal:3012/v1
+      api_key: os.environ/FREELLMAPI_KEY
+
+litellm_settings:
+  drop_params: true
+  num_retries: 2
+  request_timeout: 600
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
