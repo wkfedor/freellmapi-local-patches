@@ -10,6 +10,7 @@
 
 - `v1.0.0-log` — лог запросов `/analytics/log`
 - `v1.1.0-router` — настройки роутера `/settings`
+- `v1.2.0-open-webui` — стек Open WebUI + LiteLLM (`open-webui-litellm/`)
 
 Логирование и кастомный роутер реализованы как **Docker-патчи** к образу `ghcr.io/tashfeenahmed/freellmapi`, не как изменения внутри LiteLLM.
 
