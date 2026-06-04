@@ -6,6 +6,7 @@ import { recordRequest, recordTokens, setCooldown, getCooldownDurationForLimit }
 import { pruneRequestAnalytics } from '../services/request-retention.js';
 import { getDb, getUnifiedApiKey } from '../db/index.js';
 import { contentToString, messageHasImage, normalizeOutboundContent } from '../lib/content.js';
+import { normalizeReasoningStreamChunk, normalizeReasoningResponse } from '../lib/reasoning-normalize.js';
 import { sanitizeProviderErrorMessage } from '../lib/error-redaction.js';
 import { newTraceId, logRequestDetail, buildPromptPreview, buildResponsePreview, truncateText, } from '../lib/request-detail-log.js';
 import { shouldRetryProviderError, getMaxFailoverAttempts, recordModelOutcome, } from '../lib/custom-router.js';
@@ -498,6 +499,7 @@ proxyRouter.post('/chat/completions', async (req, res) => {
                         // Coerce array-shaped delta.content to a string before forwarding,
                         // so spec-conforming clients don't break and tool_calls survive (#166).
                         normalizeOutboundContent(chunk);
+                        normalizeReasoningStreamChunk(chunk);
                         const text = streamChunkText(chunk);
                         if (text)
                             streamText += text;
@@ -577,7 +579,7 @@ proxyRouter.post('/chat/completions', async (req, res) => {
                 if (attempt > 0)
                     res.setHeader('X-Fallback-Attempts', String(attempt));
                 // Normalize array-shaped message.content to a string on the way out (#166).
-                res.json(normalizeOutboundContent(result));
+                res.json(normalizeReasoningResponse(normalizeOutboundContent(result)));
                 logRequest(route.platform, route.modelId, route.keyId, 'success', result.usage?.prompt_tokens ?? 0, result.usage?.completion_tokens ?? 0, Date.now() - start, null);
                 logDetailAttempt(attempt, route, 'success', {
                     inputTokens: result.usage?.prompt_tokens ?? estimatedInputTokens,

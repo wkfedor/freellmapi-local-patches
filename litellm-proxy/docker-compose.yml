@@ -1,0 +1,32 @@
+# LiteLLM — только прокси Claude Code → FreeLLMAPI (:3012). Без Open WebUI.
+name: litellm-proxy
+
+services:
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:main-stable
+    container_name: litellm-proxy
+    env_file:
+      - .env
+    environment:
+      FREELLMAPI_KEY: ${FREELLMAPI_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports:
+      - "127.0.0.1:4000:4000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s

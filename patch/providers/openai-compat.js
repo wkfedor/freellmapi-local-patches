@@ -1,4 +1,5 @@
 import { BaseProvider } from './base.js';
+import { normalizeReasoningFields, normalizeReasoningStreamChunk } from '../lib/reasoning-normalize.js';
 /**
  * Generic provider for platforms that use an OpenAI-compatible API.
  * Covers: Groq, Cerebras, SambaNova, NVIDIA NIM, Mistral, OpenRouter,
@@ -103,7 +104,7 @@ export class OpenAICompatProvider extends BaseProvider {
                 if (data === '[DONE]')
                     return;
                 try {
-                    yield JSON.parse(data);
+                    yield normalizeReasoningStreamChunk(JSON.parse(data));
                 }
                 catch {
                     // Skip malformed chunks
@@ -154,14 +155,7 @@ function normalizeChoices(data) {
         // shape; folding reasoning would confuse clients that branch on content.
         // Field naming varies by provider: Z.ai uses `reasoning_content`, Ollama
         // uses `reasoning`. Prefer `reasoning_content` when both are set.
-        const hasToolCalls = Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
-        if (!hasToolCalls && (msg.content === '' || msg.content == null)) {
-            const fold = (typeof msg.reasoning_content === 'string' && msg.reasoning_content.length > 0)
-                ? msg.reasoning_content
-                : (typeof msg.reasoning === 'string' && msg.reasoning.length > 0 ? msg.reasoning : null);
-            if (fold !== null)
-                msg.content = fold;
-        }
+        normalizeReasoningFields(msg);
     }
 }
 //# sourceMappingURL=openai-compat.js.map

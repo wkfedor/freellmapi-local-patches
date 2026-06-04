@@ -204,7 +204,7 @@
           return r.json();
         });
         if (!data.entries?.length) {
-          feed.innerHTML = '<div class="empty">Пока пусто за выбранный период. Запросы на :3012/v1/chat/completions и /v1/responses появятся здесь. Claude Code идёт через LiteLLM (:4000) — в логе будет user-agent LiteLLM, если прокси доходит до FreeLLMAPI.</div>';
+          feed.innerHTML = '<div class="empty">Пока пусто за выбранный период. Запросы на :3012/v1/chat/completions и /v1/responses появятся здесь. Claude Code идёт через litellm-proxy (:4000) — в логе будет user-agent LiteLLM, если прокси доходит до FreeLLMAPI.</div>';
         } else {
           feed.innerHTML = data.entries.map((e) =>
             `<article class="entry"><div class="entry-head">#${esc(e.traceId.slice(0, 8))}…</div><div class="entry-body">${formatEntry(e)}</div></article>`

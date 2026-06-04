@@ -22,6 +22,7 @@ services:
       - ./patch/lib/log-range.js:/app/server/dist/lib/log-range.js:ro
       - ./patch/lib/provider-keys.js:/app/server/dist/lib/provider-keys.js:ro
       - ./patch/lib/router-status.js:/app/server/dist/lib/router-status.js:ro
+      - ./patch/lib/reasoning-normalize.js:/app/server/dist/lib/reasoning-normalize.js:ro
       - ./patch/providers/openai-compat.js:/app/server/dist/providers/openai-compat.js:ro
       - ./patch/routes/request-detail-log.js:/app/server/dist/routes/request-detail-log.js:ro
       - ./patch/routes/responses.js:/app/server/dist/routes/responses.js:ro

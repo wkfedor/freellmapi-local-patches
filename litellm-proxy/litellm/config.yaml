@@ -1,7 +1,6 @@
 # LiteLLM → FreeLLMAPI (http://host.docker.internal:3012/v1)
-# Anthropic-имена для Claude Code; OpenAI-имена для Open WebUI.
+# Anthropic-имена для Claude Code (/v1/messages → chat/completions).
 model_list:
-  # use_chat_completions_api: иначе Claude Code шлёт /v1/responses и LiteLLM не отдаёт text в UI.
   - model_name: auto
     litellm_params:
       model: openai/auto

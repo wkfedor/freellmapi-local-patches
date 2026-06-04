@@ -46,3 +46,13 @@ docker compose restart
 
 - Base URL: `http://127.0.0.1:3012/v1`
 - API Key: см. `~/.cline/data/secrets.json` или UI FreeLLMAPI
+
+## Claude Code
+
+Нужен отдельный LiteLLM (не Open WebUI):
+
+```bash
+cd ~/freellmapi/litellm-proxy && docker compose up -d
+```
+
+См. [docs/claude-code.md](docs/claude-code.md) и [litellm-proxy/README.md](litellm-proxy/README.md).
