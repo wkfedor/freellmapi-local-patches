@@ -1,0 +1,45 @@
+# FreeLLMAPI — локальный OpenAI-совместимый прокси для Cline / Continue.
+# После перезагрузки ПК поднимается автоматически (Docker enabled + restart: unless-stopped).
+name: freellmapi
+
+services:
+  freellmapi:
+    image: ghcr.io/tashfeenahmed/freellmapi:latest
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:${PORT:-3012}:${PORT:-3012}"
+    volumes:
+      - freellmapi-data:/app/server/data
+      # Локальные патчи (не в образе — не затираются при docker compose pull)
+      - ./patch/proxy.js:/app/server/dist/routes/proxy.js:ro
+      - ./patch/app.js:/app/server/dist/app.js:ro
+      - ./patch/services/router.js:/app/server/dist/services/router.js:ro
+      - ./patch/lib/request-detail-log.js:/app/server/dist/lib/request-detail-log.js:ro
+      - ./patch/lib/custom-router.js:/app/server/dist/lib/custom-router.js:ro
+      - ./patch/routes/request-detail-log.js:/app/server/dist/routes/request-detail-log.js:ro
+      - ./patch/routes/router-settings.js:/app/server/dist/routes/router-settings.js:ro
+      - ./patch/public/analytics.html:/app/server/dist/public/analytics.html:ro
+      - ./patch/public/settings.html:/app/server/dist/public/settings.html:ro
+      - ./patch/client/index.html:/app/client/dist/index.html:ro
+      - ./patch/client/freellmapi-nav.js:/app/client/dist/freellmapi-nav.js:ro
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const p=process.env.PORT||'3012';fetch('http://127.0.0.1:'+p+'/api/ping').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  freellmapi-data:
+    external: true
+    name: freellmapi_freellmapi-data

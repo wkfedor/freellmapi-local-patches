@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FreeLLMAPI — лог запросов</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --ok: #3dd68c;
+      --err: #f07178;
+      --warn: #ffcb6b;
+      --accent: #82aaff;
+      --req: #7ec8ff;
+      --res: #b8f0c8;
+      --model: #ffcb6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 13px/1.5 ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header nav a { color: var(--accent); text-decoration: none; margin-right: 14px; font-family: "Segoe UI", sans-serif; }
+    h1 { margin: 8px 0 10px; font: 600 15px "Segoe UI", sans-serif; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-family: "Segoe UI", sans-serif; }
+    input, select, button {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 9px; font: inherit;
+    }
+    button.primary { background: #2d4a7a; cursor: pointer; }
+    #status { color: var(--muted); font-size: 12px; margin-top: 8px; font-family: "Segoe UI", sans-serif; }
+    #feed { padding: 16px; max-width: 1200px; margin: 0 auto; }
+    .entry {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 20px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+    .entry-head {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: #152030;
+      font-family: "Segoe UI", sans-serif;
+      font-size: 12px;
+    }
+    .entry-body { padding: 14px; white-space: pre-wrap; word-break: break-word; }
+    .tag {
+      display: inline;
+      font-weight: 700;
+      padding: 0 4px;
+      border-radius: 3px;
+    }
+    .tag-time { color: var(--muted); font-weight: 600; }
+    .tag-model { color: var(--model); background: #3d351a; }
+    .tag-req { color: var(--req); background: #1a2d3d; }
+    .tag-res { color: var(--res); background: #1a3d2e; }
+    .tag-err { color: var(--err); background: #3d1a1f; }
+    .tag-ok { color: var(--ok); background: #1a3d2e; }
+    .sep { color: var(--border); user-select: none; }
+    .empty { color: var(--muted); padding: 40px; text-align: center; font-family: "Segoe UI", sans-serif; }
+    .err-banner { background: #3d1a1f; border: 1px solid var(--err); padding: 10px; margin: 16px; border-radius: 8px; display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/playground">Playground</a>
+      <a href="/keys">Keys</a>
+      <a href="/fallback">Fallback</a>
+      <a href="/analytics">Analytics</a>
+      <strong>Request log</strong>
+    </nav>
+    <h1>Запросы /v1/chat/completions — всё что ушло в ИИ и что пришло</h1>
+    <div class="controls">
+      <select id="range">
+        <option value="12h">12 часов</option>
+        <option value="24h">24 ч</option>
+        <option value="7d" selected>7 дн</option>
+        <option value="30d">30 дн</option>
+      </select>
+      <select id="statusFilter">
+        <option value="">все</option>
+        <option value="success">успех</option>
+        <option value="error">ошибка</option>
+      </select>
+      <input type="search" id="search" placeholder="поиск в тексте…" style="min-width:180px" />
+      <label><input type="checkbox" id="autoRefresh" /> авто 10с</label>
+      <button class="primary" id="refresh">Обновить</button>
+    </div>
+    <div id="status"></div>
+  </header>
+  <div id="errBanner" class="err-banner"></div>
+  <div id="feed"></div>
+  <script>
+    function esc(s) {
+      return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    function formatEntry(entry) {
+      const lines = [];
+      const head = entry.attempts[0] || {};
+      lines.push(
+        `<span class="tag-time">▌ ${esc(entry.startedAt)}</span>` +
+        `  <span class="tag-model">ВЫЗОВ</span> client_model=${esc(entry.clientModel || "auto")}` +
+        `  сообщений=${entry.messageCount}` +
+        (entry.hasTools ? "  tools=да" : "") +
+        (entry.stream ? "  stream=да" : "") +
+        (entry.userAgent ? `  ${esc(entry.userAgent)}` : "")
+      );
+      lines.push(`trace_id: ${esc(entry.traceId)}`);
+      lines.push("");
+
+      for (const a of entry.attempts) {
+        const st = a.status === "success" ? "tag-ok" : "tag-err";
+        const fin = a.finalSuccess ? "  ★ ФИНАЛЬНЫЙ ОТВЕТ КЛИЕНТУ" : "";
+        lines.push(
+          `<span class="sep">────────────────────────────────────────</span>\n` +
+          `<span class="${st}">${esc(a.status.toUpperCase())}</span>${fin}\n` +
+          `<span class="tag-model">МОДЕЛЬ</span> ${esc(a.displayName || a.modelId)}  ` +
+          `<span class="tag-model">ПРОВАЙДЕР</span> ${esc(a.platform)}  ` +
+          `<span class="tag-model">model_id</span> ${esc(a.modelId)}\n` +
+          `<span class="tag-time">время</span> ${esc(a.createdAt)}  ` +
+          `<span class="tag-time">latency</span> ${a.latencyMs} ms` +
+          (a.ttfbMs != null ? `  ttfb ${a.ttfbMs} ms` : "") +
+          `  tokens in=${a.inputTokens} out=${a.outputTokens}  попытка #${a.attempt}`
+        );
+        lines.push("");
+        lines.push(`<span class="tag-req">▼ ЗАПРОС (в ИИ)</span>`);
+        lines.push(esc(a.promptPreview || "(нет данных)"));
+        lines.push("");
+        if (a.error) {
+          lines.push(`<span class="tag-err">▼ ОШИБКА</span>`);
+          lines.push(esc(a.error));
+          lines.push("");
+        }
+        lines.push(`<span class="tag-res">▼ ОТВЕТ (от ИИ)</span>`);
+        if (a.responsePreview) {
+          lines.push(esc(a.responsePreview));
+        } else if (a.status === "success") {
+          lines.push("(ответ не записан — старый лог до исправления stream; новые запросы будут с текстом)");
+        } else {
+          lines.push("(ответа нет)");
+        }
+        lines.push("");
+      }
+      return lines.join("\n");
+    }
+
+    async function refresh() {
+      const range = document.getElementById("range").value;
+      const status = document.getElementById("statusFilter").value;
+      const q = document.getElementById("search").value.trim();
+      const feed = document.getElementById("feed");
+      const errBanner = document.getElementById("errBanner");
+      document.getElementById("status").textContent = "Загрузка…";
+      errBanner.style.display = "none";
+      try {
+        const qs = new URLSearchParams({ range, limit: "50" });
+        if (status) qs.set("status", status);
+        if (q) qs.set("q", q);
+        const data = await fetch("/api/request-log/feed?" + qs).then((r) => {
+          if (!r.ok) throw new Error(r.status + " " + r.statusText);
+          return r.json();
+        });
+        if (!data.entries?.length) {
+          feed.innerHTML = '<div class="empty">Пока пусто. Любой запрос через Continue/Cline на :3012/v1 появится здесь автоматически.</div>';
+        } else {
+          feed.innerHTML = data.entries.map((e) =>
+            `<article class="entry"><div class="entry-head">#${esc(e.traceId.slice(0, 8))}…</div><div class="entry-body">${formatEntry(e)}</div></article>`
+          ).join("");
+        }
+        document.getElementById("status").textContent =
+          "Обновлено " + new Date().toLocaleTimeString() + " · записей: " + (data.total ?? 0);
+      } catch (e) {
+        errBanner.style.display = "block";
+        errBanner.textContent = e.message;
+        document.getElementById("status").textContent = "Ошибка";
+      }
+    }
+
+    document.getElementById("refresh").addEventListener("click", refresh);
+    document.getElementById("range").addEventListener("change", refresh);
+    document.getElementById("statusFilter").addEventListener("change", refresh);
+    document.getElementById("search").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") refresh();
+    });
+    let timer = null;
+    document.getElementById("autoRefresh").addEventListener("change", (e) => {
+      clearInterval(timer);
+      if (e.target.checked) timer = setInterval(refresh, 10000);
+    });
+    refresh();
+  </script>
+</body>
+</html>
