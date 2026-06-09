@@ -83,7 +83,8 @@ export function getAllPenalties() {
 }
 // ── Routing strategy (persisted) ────────────────────────────────────────────
 const STRATEGY_KEY = 'routing_strategy';
-const VALID_STRATEGIES = ['priority', 'balanced', 'smartest', 'fastest', 'reliable'];
+const CUSTOM_WEIGHTS_KEY = 'routing_custom_weights';
+const VALID_STRATEGIES = ['priority', 'balanced', 'smartest', 'fastest', 'reliable', 'custom'];
 export function getRoutingStrategy() {
     const raw = getSetting(STRATEGY_KEY);
     return (raw && VALID_STRATEGIES.includes(raw))
@@ -96,8 +97,41 @@ export function setRoutingStrategy(strategy) {
     }
     setSetting(STRATEGY_KEY, strategy);
 }
+export function getCustomWeights() {
+    const raw = getSetting(CUSTOM_WEIGHTS_KEY);
+    if (raw) {
+        try {
+            const w = JSON.parse(raw);
+            if ([w.reliability, w.speed, w.intelligence].every(v => Number.isFinite(v) && v >= 0) &&
+                w.reliability + w.speed + w.intelligence > 0) {
+                return { reliability: w.reliability, speed: w.speed, intelligence: w.intelligence };
+            }
+        }
+        catch { /* corrupt setting → fall through to default */ }
+    }
+    return { ...BANDIT_PRESETS.balanced };
+}
+export function setCustomWeights(weights) {
+    const { reliability, speed, intelligence } = weights;
+    if (![reliability, speed, intelligence].every(v => Number.isFinite(v) && v >= 0)) {
+        throw new Error('Custom weights must be non-negative numbers');
+    }
+    const sum = reliability + speed + intelligence;
+    if (sum <= 0) {
+        throw new Error('Custom weights must not all be zero');
+    }
+    setSetting(CUSTOM_WEIGHTS_KEY, JSON.stringify({
+        reliability: reliability / sum,
+        speed: speed / sum,
+        intelligence: intelligence / sum,
+    }));
+}
 function weightsFor(strategy) {
-    return strategy === 'priority' ? null : BANDIT_PRESETS[strategy];
+    if (strategy === 'priority')
+        return null;
+    if (strategy === 'custom')
+        return getCustomWeights();
+    return BANDIT_PRESETS[strategy];
 }
 // ── Analytics stats cache (decay-weighted) ──────────────────────────────────
 // Instead of the fork's flat 7-day window (where a model that degrades today

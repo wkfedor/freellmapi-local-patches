@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
 import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,6 +21,22 @@ import { requireAuth } from './middleware/requireAuth.js';
 import { createProxyRateLimiter } from './middleware/rateLimit.js';
 import { errorHandler } from './middleware/errorHandler.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const NAV_SCRIPT = '<script src="/freellmapi-nav.js" defer></script>';
+let spaIndexCache = null;
+let spaIndexMtimeMs = 0;
+function getSpaIndexHtml(clientDist) {
+    const indexPath = path.join(clientDist, 'index.html');
+    const { mtimeMs } = fs.statSync(indexPath);
+    if (!spaIndexCache || mtimeMs !== spaIndexMtimeMs) {
+        let html = fs.readFileSync(indexPath, 'utf8');
+        if (!html.includes('freellmapi-nav.js')) {
+            html = html.replace('</body>', `    ${NAV_SCRIPT}\n  </body>`);
+        }
+        spaIndexCache = html;
+        spaIndexMtimeMs = mtimeMs;
+    }
+    return spaIndexCache;
+}
 const DEFAULT_DASHBOARD_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
@@ -74,10 +91,16 @@ export function createApp() {
     app.use('/api/request-log', requestDetailLogRouter);
     app.use('/api/router-settings', routerSettingsRouter);
     app.get('/analytics/log', (_req, res) => {
+        res.setHeader('Cache-Control', 'no-store');
         res.sendFile(ANALYTICS_PAGE);
     });
     app.get('/settings', (_req, res) => {
+        res.setHeader('Cache-Control', 'no-store');
         res.sendFile(SETTINGS_PAGE);
+    });
+    app.get('/local-nav.js', (_req, res) => {
+        res.type('application/javascript');
+        res.sendFile(path.join(__dirname, 'public/local-nav.js'));
     });
     // Error handler (for API routes)
     app.use(errorHandler);
@@ -90,7 +113,7 @@ export function createApp() {
             next();
             return;
         }
-        res.sendFile(path.join(clientDist, 'index.html'));
+        res.type('html').send(getSpaIndexHtml(clientDist));
     });
     ensureCustomRouterSchema();
     startHealthCheckWorker(routeRequest);

@@ -8,7 +8,12 @@
     :root { --bg:#0f1419; --panel:#1a2332; --border:#2d3a4f; --text:#e7ecf3; --muted:#8b9cb3; --accent:#82aaff; --ok:#3dd68c; --err:#f07178; --warn:#ffcb6b; }
     body { margin:0; font:14px/1.5 "Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); }
     header { padding:12px 16px; border-bottom:1px solid var(--border); background:var(--panel); position:sticky; top:0; z-index:5; }
-    header a { color:var(--accent); margin-right:14px; text-decoration:none; }
+    .flm-nav {
+      display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center;
+      font-size:13px;
+    }
+    .flm-nav a { color:var(--accent); text-decoration:none; white-space:nowrap; }
+    .flm-nav a.flm-nav-active { color:var(--text); font-weight:700; pointer-events:none; }
     main { max-width:900px; margin:0 auto; padding:16px 20px 40px; }
     section { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-bottom:16px; }
     h2 { margin:0 0 12px; font-size:1rem; color:var(--accent); }
@@ -47,13 +52,13 @@
 </head>
 <body>
   <header>
-    <nav>
+    <nav class="flm-nav">
       <a href="/playground">Playground</a>
       <a href="/keys">Keys</a>
       <a href="/fallback">Fallback</a>
       <a href="/analytics">Analytics</a>
       <a href="/analytics/log">Request log</a>
-      <strong>Router settings</strong>
+      <a href="/settings">Router settings</a>
     </nav>
   </header>
   <main>
@@ -295,5 +300,6 @@
 
     load();
   </script>
+  <script src="/local-nav.js" defer></script>
 </body>
 </html>

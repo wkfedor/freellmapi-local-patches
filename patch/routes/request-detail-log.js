@@ -2,23 +2,23 @@ import { Router } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getDb } from '../db/index.js';
-import { ensureRequestDetailSchema } from '../lib/request-detail-log.js';
-import { toSinceIso, normalizeRange } from '../lib/log-range.js';
+import { ensureRequestDetailSchema, truncateForFeed, MAX_LOG_FEED_TRACES } from '../lib/request-detail-log.js';
+import { normalizeRange, sinceSqlForRange } from '../lib/log-range.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ANALYTICS_PAGE = path.resolve(__dirname, '../public/analytics.html');
 
 export const requestDetailLogRouter = Router();
 
-function toSince(range) {
-    return toSinceIso(normalizeRange(range));
+function sinceWhere(range) {
+    return `created_at >= ${sinceSqlForRange(normalizeRange(range))}`;
 }
 
 requestDetailLogRouter.get('/summary', (req, res) => {
     ensureRequestDetailSchema();
-    const range = String(req.query.range ?? '7d');
-    const since = toSince(range);
+    const range = String(req.query.range ?? 'today');
     const db = getDb();
+    const where = sinceWhere(range);
     const stats = db.prepare(`
     SELECT
       COUNT(*) AS total_attempts,
@@ -28,20 +28,20 @@ requestDetailLogRouter.get('/summary', (req, res) => {
       SUM(output_tokens) AS output_tokens,
       AVG(latency_ms) AS avg_latency_ms
     FROM request_log_detail
-    WHERE created_at >= ?
-  `).get(since);
+    WHERE ${where}
+  `).get();
     const byPlatform = db.prepare(`
     SELECT routed_platform AS platform, COUNT(*) AS attempts,
       SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors
-    FROM request_log_detail WHERE created_at >= ?
+    FROM request_log_detail WHERE ${where}
     GROUP BY routed_platform ORDER BY attempts DESC
-  `).all(since);
-    res.json({ range, since, stats, byPlatform });
+  `).all();
+    res.json({ range: normalizeRange(range), stats, byPlatform });
 });
 
 requestDetailLogRouter.get('/by-model', (req, res) => {
     ensureRequestDetailSchema();
-    const since = toSince(String(req.query.range ?? '7d'));
+    const range = String(req.query.range ?? 'today');
     const db = getDb();
     const rows = db.prepare(`
     SELECT
@@ -56,16 +56,16 @@ requestDetailLogRouter.get('/by-model', (req, res) => {
       SUM(input_tokens) AS input_tokens,
       SUM(output_tokens) AS output_tokens
     FROM request_log_detail
-    WHERE created_at >= ?
+    WHERE ${sinceWhere(range)}
     GROUP BY routed_platform, routed_model, display_name
     ORDER BY attempts DESC
-  `).all(since);
+  `).all();
     res.json(rows);
 });
 
 requestDetailLogRouter.get('/traces', (req, res) => {
     ensureRequestDetailSchema();
-    const since = toSince(String(req.query.range ?? '7d'));
+    const range = String(req.query.range ?? 'today');
     const limit = Math.min(Math.max(Number(req.query.limit) || 80, 1), 500);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     const status = req.query.status ? String(req.query.status) : null;
@@ -73,9 +73,9 @@ requestDetailLogRouter.get('/traces', (req, res) => {
     const q = req.query.q ? String(req.query.q).trim() : '';
 
     const db = getDb();
-    const clauses = ['created_at >= ?'];
-    const params = [since];
-    if (status === 'success' || status === 'error') {
+    const clauses = [sinceWhere(range)];
+    const params = [];
+    if (status === 'success' || status === 'error' || status === 'skipped') {
         clauses.push('status = ?');
         params.push(status);
     }
@@ -124,7 +124,7 @@ requestDetailLogRouter.get('/traces', (req, res) => {
     res.json({ total, limit, offset, traces });
 });
 
-function mapAttemptRow(r) {
+function mapAttemptRow(r, forFeed = false) {
     return {
         id: r.id,
         attempt: r.attempt,
@@ -138,12 +138,12 @@ function mapAttemptRow(r) {
         outputTokens: r.output_tokens,
         latencyMs: r.latency_ms,
         ttfbMs: r.ttfb_ms,
-        error: r.error,
+        error: forFeed ? truncateForFeed(r.error, 2000) : r.error,
         stream: r.stream === 1,
         hasTools: r.has_tools === 1,
         messageCount: r.message_count,
-        promptPreview: r.prompt_preview,
-        responsePreview: r.response_preview,
+        promptPreview: forFeed ? truncateForFeed(r.prompt_preview) : r.prompt_preview,
+        responsePreview: forFeed ? truncateForFeed(r.response_preview) : r.response_preview,
         clientIp: r.client_ip,
         userAgent: r.user_agent,
         finalSuccess: r.final_success === 1,
@@ -151,18 +151,17 @@ function mapAttemptRow(r) {
     };
 }
 
-// Full text feed for the log page (all attempts grouped by trace, newest first).
 requestDetailLogRouter.get('/feed', (req, res) => {
     ensureRequestDetailSchema();
-    const since = toSince(String(req.query.range ?? '7d'));
-    const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 150);
+    const range = String(req.query.range ?? 'today');
+    const limit = Math.min(Math.max(Number(req.query.limit) || MAX_LOG_FEED_TRACES, 1), MAX_LOG_FEED_TRACES);
     const status = req.query.status ? String(req.query.status) : null;
     const q = req.query.q ? String(req.query.q).trim() : '';
     const db = getDb();
 
-    const traceClauses = ['created_at >= ?'];
-    const traceParams = [since];
-    if (status === 'success' || status === 'error') {
+    const traceClauses = [sinceWhere(range)];
+    const traceParams = [];
+    if (status === 'success' || status === 'error' || status === 'skipped') {
         traceClauses.push('status = ?');
         traceParams.push(status);
     }
@@ -186,7 +185,7 @@ requestDetailLogRouter.get('/feed', (req, res) => {
   `).all(...traceParams, limit).map((r) => r.trace_id);
 
     if (!traceIds.length) {
-        res.json({ entries: [], total: 0 });
+        res.json({ entries: [], total: 0, shown: 0 });
         return;
     }
 
@@ -212,13 +211,16 @@ requestDetailLogRouter.get('/feed', (req, res) => {
             });
         }
         const entry = byTrace.get(row.trace_id);
-        entry.attempts.push(mapAttemptRow(row));
+        entry.attempts.push(mapAttemptRow(row, true));
         if (row.created_at < entry.startedAt)
             entry.startedAt = row.created_at;
     }
 
     const entries = traceIds.map((id) => byTrace.get(id)).filter(Boolean);
-    res.json({ entries, total: entries.length });
+    const total = db.prepare(`
+    SELECT COUNT(DISTINCT trace_id) AS c FROM request_log_detail WHERE ${traceWhere}
+  `).get(...traceParams).c;
+    res.json({ entries, total, shown: entries.length });
 });
 
 requestDetailLogRouter.get('/traces/:traceId', (req, res) => {
@@ -236,6 +238,6 @@ requestDetailLogRouter.get('/traces/:traceId', (req, res) => {
     }
     res.json({
         traceId: req.params.traceId,
-        attempts: rows.map(mapAttemptRow),
+        attempts: rows.map((r) => mapAttemptRow(r, true)),
     });
 });

@@ -2,8 +2,10 @@ import crypto from 'crypto';
 import { getDb } from '../db/index.js';
 
 const PREVIEW_MAX = Number(process.env.REQUEST_LOG_PREVIEW_MAX) || 120000;
-const DEFAULT_RETENTION_DAYS = 90;
-const DEFAULT_MAX_ROWS = 200_000;
+/** Max chars returned to /analytics/log feed (full text stays in DB until end of day). */
+export const FEED_PREVIEW_MAX = Number(process.env.REQUEST_LOG_FEED_PREVIEW_MAX) || 4000;
+/** Hard cap on traces shown in /analytics/log — never exceed (UI perf). */
+export const MAX_LOG_FEED_TRACES = 500;
 
 let schemaReady = false;
 
@@ -100,38 +102,33 @@ export function ensureRequestDetailSchema() {
     CREATE INDEX IF NOT EXISTS idx_rld_status ON request_log_detail(status);
     CREATE INDEX IF NOT EXISTS idx_rld_platform ON request_log_detail(routed_platform);
   `);
+    const deleted = pruneRequestDetailLog();
+    if (deleted > 0)
+        console.log(`[RequestLog] purged ${deleted} rows older than today`);
     schemaReady = true;
 }
 
-function retentionConfig() {
-    const days = Number(process.env.REQUEST_LOG_RETENTION_DAYS ?? DEFAULT_RETENTION_DAYS);
-    const maxRows = Number(process.env.REQUEST_LOG_MAX_ROWS ?? DEFAULT_MAX_ROWS);
-    return {
-        retentionDays: Number.isInteger(days) && days >= 0 ? days : DEFAULT_RETENTION_DAYS,
-        maxRows: Number.isInteger(maxRows) && maxRows >= 0 ? maxRows : DEFAULT_MAX_ROWS,
-    };
+/** Keep only today's rows (local TZ of container). Runs on every insert and at startup. */
+export function pruneRequestDetailLog() {
+    const db = getDb();
+    if (!schemaReady) {
+        const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='request_log_detail'").get();
+        if (!table)
+            return 0;
+    }
+    return db.prepare(`
+    DELETE FROM request_log_detail
+    WHERE created_at < datetime('now', 'start of day', 'localtime')
+  `).run().changes;
 }
 
-export function pruneRequestDetailLog() {
-    ensureRequestDetailSchema();
-    const db = getDb();
-    const { retentionDays, maxRows } = retentionConfig();
-    let deleted = 0;
-    if (retentionDays > 0) {
-        const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString().slice(0, 19).replace('T', ' ');
-        deleted += db.prepare('DELETE FROM request_log_detail WHERE created_at < ?').run(cutoff).changes;
-    }
-    if (maxRows > 0) {
-        const count = db.prepare('SELECT COUNT(*) AS c FROM request_log_detail').get().c;
-        if (count > maxRows) {
-            deleted += db.prepare(`
-        DELETE FROM request_log_detail WHERE id IN (
-          SELECT id FROM request_log_detail ORDER BY id ASC LIMIT ?
-        )
-      `).run(count - maxRows).changes;
-        }
-    }
-    return deleted;
+export function truncateForFeed(text, max = FEED_PREVIEW_MAX) {
+    if (text == null)
+        return text;
+    const s = String(text);
+    if (s.length <= max)
+        return s;
+    return `${s.slice(0, max)}… [ещё ${s.length - max} симв.]`;
 }
 
 export function logRequestDetail(entry) {

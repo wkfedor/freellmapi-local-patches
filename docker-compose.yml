@@ -9,11 +9,14 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      TZ: Asia/Novosibirsk
     ports:
       - "127.0.0.1:${PORT:-3012}:${PORT:-3012}"
     volumes:
       - freellmapi-data:/app/server/data
       # Локальные патчи (не в образе — не затираются при docker compose pull)
+      - ./patch/index.js:/app/server/dist/index.js:ro
+      - ./patch/lib/db-preinit.js:/app/server/dist/lib/db-preinit.js:ro
       - ./patch/proxy.js:/app/server/dist/routes/proxy.js:ro
       - ./patch/app.js:/app/server/dist/app.js:ro
       - ./patch/services/router.js:/app/server/dist/services/router.js:ro
@@ -29,7 +32,6 @@ services:
       - ./patch/routes/router-settings.js:/app/server/dist/routes/router-settings.js:ro
       - ./patch/public/analytics.html:/app/server/dist/public/analytics.html:ro
       - ./patch/public/settings.html:/app/server/dist/public/settings.html:ro
-      - ./patch/client/index.html:/app/client/dist/index.html:ro
       - ./patch/client/freellmapi-nav.js:/app/client/dist/freellmapi-nav.js:ro
     restart: unless-stopped
     healthcheck:
