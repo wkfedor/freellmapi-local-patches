@@ -121,7 +121,7 @@ fi
 
 log "$ git commit"
 if ! git commit -m "${COMMIT_MSG}" >> "${LOG_FILE}" 2>&1; then
-  finish 1 0 0 "git commit не удался (см. log)"
+  finish 1 0 0 0 "git commit не удался (см. log)"
 fi
 
 branch="$(git branch --show-current)"
@@ -129,14 +129,14 @@ branch="${branch:-main}"
 
 log "$ git push -u origin ${branch}"
 if git push -u origin "${branch}" >> "${LOG_FILE}" 2>&1; then
-  finish 0 1 1 "Закоммичено и отправлено в origin/${branch}"
+  finish 0 1 1 1 "Закоммичено и отправлено в origin/${branch}"
 fi
 
 log "push отклонён — fetch + pull --no-rebase + push"
 git fetch origin "${branch}" >> "${LOG_FILE}" 2>&1 || true
 git pull --no-rebase origin "${branch}" >> "${LOG_FILE}" 2>&1 || true
 if git push -u origin "${branch}" >> "${LOG_FILE}" 2>&1; then
-  finish 0 1 1 "Закоммичено и отправлено в origin/${branch} (после pull)"
+  finish 0 1 1 1 "Закоммичено и отправлено в origin/${branch} (после pull)"
 fi
 
-finish 1 1 0 "Коммит создан, push не удался (см. log)"
+finish 1 1 0 0 "Коммит создан, push не удался (см. log)"
