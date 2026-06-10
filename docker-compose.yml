@@ -32,6 +32,7 @@ services:
       - ./patch/routes/router-settings.js:/app/server/dist/routes/router-settings.js:ro
       - ./patch/public/analytics.html:/app/server/dist/public/analytics.html:ro
       - ./patch/public/settings.html:/app/server/dist/public/settings.html:ro
+      - ./patch/public/local-nav.js:/app/server/dist/public/local-nav.js:ro
       - ./patch/client/freellmapi-nav.js:/app/client/dist/freellmapi-nav.js:ro
     restart: unless-stopped
     healthcheck:
