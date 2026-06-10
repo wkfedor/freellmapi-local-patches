@@ -24,6 +24,18 @@
 
 В `patch/proxy.js` включён локальный патч: при 402, 401 и других сбоях прокси переключается на следующую модель (до 20 попыток), а не отдаёт сразу 502. Файл монтируется через `docker-compose.yml`. После `docker compose pull` патч сохраняется; обновляется только образ, не `patch/proxy.js`.
 
+## Залить в Git
+
+Кнопка **«Залить в Git»** в меню (SPA, `/analytics/log`, `/settings`) — `git add -A`, commit, push в [freellmapi-local-patches](https://github.com/wkfedor/freellmapi-local-patches). Дополнительные сервисы не нужны: FreeLLMAPI сам вызывает `push-to-git.sh` в смонтированном репозитории.
+
+Скрипт можно запустить и вручную: `~/freellmapi/push-to-git.sh` (двойной клик откроет терминал).
+
+Первый запуск или после изменения `Dockerfile`:
+
+```bash
+cd ~/freellmapi && docker compose build && docker compose up -d
+```
+
 ## Команды
 
 ```bash
@@ -33,7 +45,7 @@ cd ~/freellmapi
 docker compose ps
 
 # Обновить образ (после выхода новой версии freellmapi)
-docker compose pull && docker compose up -d
+docker compose build --pull && docker compose up -d
 
 # Логи
 docker compose logs -f --tail 100
