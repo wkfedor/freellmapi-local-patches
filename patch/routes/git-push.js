@@ -3,18 +3,10 @@ import { GitPusherError, runGitPush } from '../lib/git-pusher.js';
 
 export const gitPushRouter = Router();
 
-function isLocalRequest(req) {
-    const ip = req.ip || req.socket?.remoteAddress || '';
-    return ip === '127.0.0.1'
-        || ip === '::1'
-        || ip === '::ffff:127.0.0.1'
-        || ip.endsWith('127.0.0.1');
-}
-
 function authorized(req) {
     const secret = process.env.FREELLMAPI_GIT_PUSH_SECRET?.trim();
     if (!secret)
-        return isLocalRequest(req);
+        return true;
     const key = req.get('X-Freellmapi-Git-Push-Key')?.trim();
     return key === secret;
 }
