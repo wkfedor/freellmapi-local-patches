@@ -2,7 +2,7 @@
 FROM ghcr.io/tashfeenahmed/freellmapi:latest
 USER root
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git \
+ && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && git config --system safe.directory '*'
 USER node

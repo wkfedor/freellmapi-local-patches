@@ -139,4 +139,4 @@ if git push -u origin "${branch}" >> "${LOG_FILE}" 2>&1; then
   finish 0 1 1 1 "Закоммичено и отправлено в origin/${branch} (после pull)"
 fi
 
-finish 1 1 0 0 "Коммит создан, push не удался (см. log)"
+finish 1 0 1 0 "Коммит создан, push не удался (см. log)"

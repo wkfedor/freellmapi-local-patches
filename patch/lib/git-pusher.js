@@ -58,7 +58,7 @@ function runScript(args, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
             }
             try {
                 const parsed = JSON.parse(raw);
-                if (code !== 0 && parsed.ok !== true) {
+                if (code !== 0 || parsed.ok === false) {
                     reject(new GitPusherError(parsed.message || 'git push не удался', { log: parsed.log }));
                     return;
                 }
