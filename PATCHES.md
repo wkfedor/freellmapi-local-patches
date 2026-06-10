@@ -6,6 +6,7 @@
 
 - `/analytics/log` — подробный лог запросов/ответов
 - `/settings` — настройки кастомного роутера
+- **Залить в Git** — кнопка в меню (SPA и `/analytics/log`, `/settings`); `POST /api/git-push` → `push-to-git.sh`
 
 ## Теги (git)
 

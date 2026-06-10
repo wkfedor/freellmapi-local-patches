@@ -15,6 +15,7 @@ import { settingsRouter } from './routes/settings.js';
 import { authRouter } from './routes/auth.js';
 import { requestDetailLogRouter, ANALYTICS_PAGE, } from './routes/request-detail-log.js';
 import { routerSettingsRouter, SETTINGS_PAGE, } from './routes/router-settings.js';
+import { gitPushRouter } from './routes/git-push.js';
 import { routeRequest } from './services/router.js';
 import { startHealthCheckWorker, startStatsRefreshWorker, ensureCustomRouterSchema } from './lib/custom-router.js';
 import { requireAuth } from './middleware/requireAuth.js';
@@ -22,6 +23,7 @@ import { createProxyRateLimiter } from './middleware/rateLimit.js';
 import { errorHandler } from './middleware/errorHandler.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const NAV_SCRIPT = '<script src="/freellmapi-nav.js" defer></script>';
+const GIT_PUSH_SCRIPT = '<script src="/git-push.js" defer></script>';
 let spaIndexCache = null;
 let spaIndexMtimeMs = 0;
 function getSpaIndexHtml(clientDist) {
@@ -30,7 +32,10 @@ function getSpaIndexHtml(clientDist) {
     if (!spaIndexCache || mtimeMs !== spaIndexMtimeMs) {
         let html = fs.readFileSync(indexPath, 'utf8');
         if (!html.includes('freellmapi-nav.js')) {
-            html = html.replace('</body>', `    ${NAV_SCRIPT}\n  </body>`);
+            html = html.replace('</body>', `    ${NAV_SCRIPT}\n    ${GIT_PUSH_SCRIPT}\n  </body>`);
+        }
+        else if (!html.includes('git-push.js')) {
+            html = html.replace('</body>', `    ${GIT_PUSH_SCRIPT}\n  </body>`);
         }
         spaIndexCache = html;
         spaIndexMtimeMs = mtimeMs;
@@ -90,6 +95,7 @@ export function createApp() {
     // Detailed request log — read-only, no API key (localhost-only via docker port bind).
     app.use('/api/request-log', requestDetailLogRouter);
     app.use('/api/router-settings', routerSettingsRouter);
+    app.use('/api/git-push', gitPushRouter);
     app.get('/analytics/log', (_req, res) => {
         res.setHeader('Cache-Control', 'no-store');
         res.sendFile(ANALYTICS_PAGE);
@@ -101,6 +107,10 @@ export function createApp() {
     app.get('/local-nav.js', (_req, res) => {
         res.type('application/javascript');
         res.sendFile(path.join(__dirname, 'public/local-nav.js'));
+    });
+    app.get('/git-push.js', (_req, res) => {
+        res.type('application/javascript');
+        res.sendFile(path.join(__dirname, 'public/git-push.js'));
     });
     // Error handler (for API routes)
     app.use(errorHandler);

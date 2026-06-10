@@ -4,16 +4,23 @@ name: freellmapi
 
 services:
   freellmapi:
-    image: ghcr.io/tashfeenahmed/freellmapi:latest
+    build: .
+    image: freellmapi-local:patched
     env_file:
       - .env
     environment:
       NODE_ENV: production
       TZ: Asia/Novosibirsk
+      FREELLMAPI_REPO_ROOT: /freellmapi-repo
+      HOME: /home/node
     ports:
       - "127.0.0.1:${PORT:-3012}:${PORT:-3012}"
     volumes:
       - freellmapi-data:/app/server/data
+      # Репозиторий патчей — git push из UI (/api/git-push → push-to-git.sh)
+      - .:/freellmapi-repo:rw
+      - ${HOME}/.gitconfig:/home/node/.gitconfig:ro
+      - ${HOME}/.git-credentials:/home/node/.git-credentials:ro
       # Локальные патчи (не в образе — не затираются при docker compose pull)
       - ./patch/index.js:/app/server/dist/index.js:ro
       - ./patch/lib/db-preinit.js:/app/server/dist/lib/db-preinit.js:ro
@@ -30,9 +37,12 @@ services:
       - ./patch/routes/request-detail-log.js:/app/server/dist/routes/request-detail-log.js:ro
       - ./patch/routes/responses.js:/app/server/dist/routes/responses.js:ro
       - ./patch/routes/router-settings.js:/app/server/dist/routes/router-settings.js:ro
+      - ./patch/routes/git-push.js:/app/server/dist/routes/git-push.js:ro
+      - ./patch/lib/git-pusher.js:/app/server/dist/lib/git-pusher.js:ro
       - ./patch/public/analytics.html:/app/server/dist/public/analytics.html:ro
       - ./patch/public/settings.html:/app/server/dist/public/settings.html:ro
       - ./patch/public/local-nav.js:/app/server/dist/public/local-nav.js:ro
+      - ./patch/public/git-push.js:/app/server/dist/public/git-push.js:ro
       - ./patch/client/freellmapi-nav.js:/app/client/dist/freellmapi-nav.js:ro
     restart: unless-stopped
     healthcheck:
